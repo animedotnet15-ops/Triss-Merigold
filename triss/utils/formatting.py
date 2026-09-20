@@ -155,6 +155,18 @@ SHORTENER_RATE_LIMITED_TEXT = _bold(
     "ᴘʟᴇᴀsᴇ ᴡᴀɪᴛ ᴀ ғᴇᴡ ᴍɪɴᴜᴛᴇs ʙᴇғᴏʀᴇ ᴛʀʏɪɴɢ ᴀɢᴀɪɴ."
 )
 
+# Shown once, in place of SHORTENER_BYPASS_TEXT, on the exact attempt that
+# reaches the configured strike limit (triss.database.mongodb DEFAULT_
+# SETTINGS "shortener.anti_bypass.strike_limit") - deliberately does NOT
+# mention how long the mute lasts (owner requirement: "time show aga
+# kudathu" - don't show the time). Subsequent attempts during the mute
+# window fall through to SHORTENER_RATE_LIMITED_TEXT above via the
+# existing is_rate_limited() check, which is equally vague about duration.
+SHORTENER_MUTED_TEXT = _bold(
+    "🔇 ʏᴏᴜ'ᴠᴇ ʙᴇᴇɴ ᴛᴇᴍᴘᴏʀᴀʀɪʟʏ ᴍᴜᴛᴇᴅ ғᴏʀ ʀᴇᴘᴇᴀᴛᴇᴅ ᴠᴇʀɪғɪᴄᴀᴛɪᴏɴ ʙʏᴘᴀss ᴀᴛᴛᴇᴍᴘᴛs.\n\n"
+    "ᴘʟᴇᴀsᴇ sᴛᴏᴘ ᴀɴᴅ ᴛʀʏ ᴀɢᴀɪɴ ʟᴀᴛᴇʀ."
+)
+
 SHORTENER_SESSION_INVALID_TEXT = _bold(
     "❌ ᴛʜɪs ᴠᴇʀɪғɪᴄᴀᴛɪᴏɴ sᴇssɪᴏɴ ɪs ɪɴᴠᴀʟɪᴅ ᴏʀ ᴀʟʀᴇᴀᴅʏ ᴜsᴇᴅ.\n\n"
     "Pʟᴇᴀsᴇ ʀᴇᴏᴘᴇɴ ᴛʜᴇ ᴏʀɪɢɪɴᴀʟ ᴄᴏɴᴛᴇɴᴛ ʟɪɴᴋ ᴛᴏ sᴛᴀʀᴛ ᴀ ɴᴇᴡ ᴠᴇʀɪғɪᴄᴀᴛɪᴏɴ."
@@ -199,3 +211,4 @@ def render_welcome(template: Optional[str], *, user_id: int, first_name: str,
             .replace("{username}", f"@{safe_username}" if username else "")
             .replace("{id}", str(user_id))
     )
+                        
