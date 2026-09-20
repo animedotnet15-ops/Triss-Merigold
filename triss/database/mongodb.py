@@ -54,6 +54,11 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "auto_delete": {
         "enabled": False,
         "seconds": 0,
+        # When False, the "this will be auto-deleted" notice message is
+        # skipped entirely - auto-delete itself (the scheduled deletion)
+        # still runs exactly the same either way. See
+        # triss/services/delivery.py schedule_auto_delete().
+        "notify": True,
     },
     "maintenance": False,
     "storage_channel_id": config.storage_channel_id,
@@ -65,6 +70,30 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "minimum_seconds": 150,
         "maximum_seconds": 500,
         "tutorial_url": None,
+        # Customizable "please verify" popup - text/photo/spoiler. `text`
+        # None falls back to SHORTENER_VERIFY_TEXT (triss/utils/formatting.py).
+        "verify_message": {"text": None, "photo_file_id": None, "spoiler": False},
+        # Customizable "bypass detected" popup shown on strikes 1..N-1.
+        # `text` None falls back to SHORTENER_BYPASS_TEXT. The live "Warning
+        # {count}" line is appended automatically - do not put a literal
+        # {count} in here unless you want it to appear twice.
+        "bypass_message": {"text": None, "photo_file_id": None, "spoiler": False},
+        # Shown once instead of bypass_message on the strike that reaches
+        # strike_limit (see anti_bypass below). Deliberately never mentions
+        # how long the mute lasts. `text` None falls back to
+        # SHORTENER_MUTED_TEXT.
+        "muted_message": {"text": None, "photo_file_id": None, "spoiler": False},
+        "anti_bypass": {
+            # Number of bypass attempts (within mute_seconds of each other)
+            # before the user is temporarily muted from starting new
+            # verification sessions. Attempts 1..(strike_limit-1) show
+            # bypass_message with a "Warning N" count; the strike_limit-th
+            # attempt shows muted_message instead and the user is then
+            # blocked (SHORTENER_RATE_LIMITED_TEXT) until mute_seconds
+            # of inactivity passes - see triss/services/shortener.py.
+            "strike_limit": 3,
+            "mute_seconds": 600,
+        },
     },
 }
 
@@ -160,3 +189,4 @@ class Database:
 
 
 database = Database()
+    
