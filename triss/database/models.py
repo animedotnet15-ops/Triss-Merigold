@@ -127,16 +127,25 @@ async def revoke_link(token: str) -> bool:
 # ---------------------------------------------------------------------------
 
 async def add_force_sub(kind: str, chat_id: Optional[int], title: str,
-                         invite_link: Optional[str] = None) -> bool:
+                         invite_link: Optional[str] = None,
+                         join_mode: str = "normal") -> bool:
     """kind: 'channel' | 'group' | 'folder'. For 'folder', chat_id is None and
     invite_link holds the Telegram folder share link (resource link only —
-    Telegram does not expose folder-membership verification)."""
+    Telegram does not expose folder-membership verification).
+
+    join_mode: 'normal' | 'request'. 'request' means invite_link was created
+    with creates_join_request=True (Telegram shows the user a "Request to
+    Join" flow instead of joining instantly) - triss.services.forcesub's
+    chat-join-request handler auto-approves these immediately, so
+    verification (get_chat_member) works identically either way. Ignored
+    for kind='folder' (Telegram exposes no join-request concept for folders)."""
     try:
         await database.force_subs.insert_one({
             "kind": kind,
             "chat_id": chat_id,
             "title": title,
             "invite_link": invite_link,
+            "join_mode": join_mode if kind != "folder" else "normal",
             "added_at": time.time(),
         })
         return True
@@ -279,4 +288,5 @@ async def set_verification_status(session_id: str, status: str,
     await database.verification_sessions.update_one({"session_id": session_id}, {"$set": patch})
 
 
-                                       
+
+    
