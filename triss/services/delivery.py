@@ -65,10 +65,12 @@ async def schedule_auto_delete(client: Client, chat_id: int, message_ids: list[i
         return
 
     async def _job():
-        try:
-            notice = await client.send_message(chat_id, AUTO_DELETE_NOTICE_TEXT)
-        except RPCError:
-            notice = None
+        notice = None
+        if auto_delete.get("notify", True):
+            try:
+                notice = await client.send_message(chat_id, AUTO_DELETE_NOTICE_TEXT)
+            except RPCError:
+                notice = None
         await asyncio.sleep(seconds)
         try:
             await client.delete_messages(chat_id, message_ids)
@@ -103,3 +105,4 @@ async def send_temporary(client: Client, chat_id: int, text: str, **kwargs) -> M
         return None
     await schedule_auto_delete(client, chat_id, [msg.id])
     return msg
+  
