@@ -92,13 +92,27 @@ def forcesub_menu() -> InlineKeyboardMarkup:
     ])
 
 
+def forcesub_join_mode_menu(target: str) -> InlineKeyboardMarkup:
+    """`target` is "channel" or "group" - shown right after 'Add Channel'/
+    'Add Group' so the owner picks how users join BEFORE forwarding the
+    chat, since the invite link itself differs (see forcesub:addX:MODE
+    handlers in callbacks.py, which pass this through to
+    triss.database.models.add_force_sub's join_mode)."""
+    return InlineKeyboardMarkup([
+        [btn("🔗 Normal Join", f"forcesub:add{target}:normal", ButtonStyle.SUCCESS)],
+        [btn("📝 Join Request", f"forcesub:add{target}:request", ButtonStyle.PRIMARY)],
+        [back_btn("settings:forcesub")],
+    ])
+
+
 def force_sub_user_keyboard(entries: list[dict]) -> InlineKeyboardMarkup:
     rows = []
     for entry in entries:
         link = entry.get("invite_link") or ""
         title = entry.get("title") or entry.get("kind", "").title()
+        label = "📝 Request to Join" if entry.get("join_mode") == "request" else "📢 Join"
         if link:
-            rows.append([url_btn(f"📢 Join {title}", link, ButtonStyle.SUCCESS)])
+            rows.append([url_btn(f"{label} {title}", link, ButtonStyle.SUCCESS)])
     rows.append([btn("✅ Verify", "forcesub:verify", ButtonStyle.PRIMARY)])
     return InlineKeyboardMarkup(rows)
 
@@ -106,7 +120,8 @@ def force_sub_user_keyboard(entries: list[dict]) -> InlineKeyboardMarkup:
 def remove_forcesub_list(entries: list[dict]) -> InlineKeyboardMarkup:
     rows = []
     for i, entry in enumerate(entries):
-        label = f"❌ {entry.get('title', entry.get('kind'))}"
+        mode_tag = " 📝" if entry.get("join_mode") == "request" else ""
+        label = f"❌ {entry.get('title', entry.get('kind'))}{mode_tag}"
         rows.append([btn(label, f"forcesub:rm:{entry['kind']}:{entry.get('chat_id')}", ButtonStyle.DANGER)])
     rows.append([back_btn("settings:forcesub")])
     return InlineKeyboardMarkup(rows)
@@ -116,7 +131,9 @@ def remove_forcesub_list(entries: list[dict]) -> InlineKeyboardMarkup:
 # Auto Delete submenu
 # ---------------------------------------------------------------------------
 
-def autodelete_menu() -> InlineKeyboardMarkup:
+def autodelete_menu(notify: bool = True) -> InlineKeyboardMarkup:
+    notify_label = "🔔 Notify: 🟢 ON" if notify else "🔕 Notify: 🔴 OFF"
+    notify_style = ButtonStyle.SUCCESS if notify else ButtonStyle.DANGER
     return InlineKeyboardMarkup([
         [
             btn("10s", "autodelete:set:10", ButtonStyle.PRIMARY),
@@ -125,6 +142,7 @@ def autodelete_menu() -> InlineKeyboardMarkup:
         ],
         [btn("✏️ Custom", "autodelete:custom")],
         [btn("✅ Enable", "autodelete:enable", ButtonStyle.SUCCESS), btn("🚫 Disable", "autodelete:disable", ButtonStyle.DANGER)],
+        [btn(notify_label, "autodelete:togglenotify", notify_style)],
         [back_btn()],
     ])
 
@@ -184,10 +202,40 @@ def shortener_menu(enabled: bool) -> InlineKeyboardMarkup:
         [btn("🌍 Set Shortener Domain", "shortener:setdomain")],
         [btn("🔒 Set Shortener API", "shortener:setapi")],
         [btn("🕒 Set Minimum Time", "shortener:setmin"), btn("⏰ Set Maximum Time", "shortener:setmax")],
+        [btn("💬 Verify Popup", "shortener:verifymsg"), btn("🚨 Bypass Popup", "shortener:bypassmsg")],
+        [btn("🎯 Anti-Bypass", "shortener:antibypass")],
         [btn("▶️ Tutorial Video", "shortener:tutorial")],
         [btn("🧪 Test", "shortener:test")],
         [btn(toggle_label, "shortener:toggle", toggle_style)],
         [back_btn()],
+    ])
+
+
+def shortener_message_menu(kind: str, has_photo: bool, spoiler: bool) -> InlineKeyboardMarkup:
+    """`kind` is "verifymsg", "bypassmsg" or "mutedmsg" - shared layout for
+    all three customizable popups (feature: text + optional photo with a
+    spoiler toggle)."""
+    spoiler_label = "🙈 Spoiler: 🟢 ON" if spoiler else "🙈 Spoiler: 🔴 OFF"
+    spoiler_style = ButtonStyle.SUCCESS if spoiler else ButtonStyle.DANGER
+    rows = [
+        [btn("💬 Set Text", f"shortener:{kind}:settext")],
+        [btn("📸 Set Photo", f"shortener:{kind}:setphoto")],
+    ]
+    if has_photo:
+        rows.append([btn("🗑️ Remove Photo", f"shortener:{kind}:removephoto", ButtonStyle.DANGER)])
+    rows.append([btn(spoiler_label, f"shortener:{kind}:spoiler", spoiler_style)])
+    rows.append([btn("↩️ Reset to Default", f"shortener:{kind}:reset", ButtonStyle.DANGER)])
+    rows.append([btn("👀 Preview", f"shortener:{kind}:preview")])
+    rows.append([back_btn("settings:shortener")])
+    return InlineKeyboardMarkup(rows)
+
+
+def antibypass_menu(strike_limit: int, mute_seconds: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [btn(f"🎯 Strike Limit: {strike_limit}", "shortener:antibypass:setstrikes")],
+        [btn(f"🔇 Mute Duration: {mute_seconds}s", "shortener:antibypass:setmute")],
+        [btn("🚨 Bypass Popup", "shortener:bypassmsg"), btn("🔇 Muted Popup", "shortener:mutedmsg")],
+        [back_btn("settings:shortener")],
     ])
 
 
@@ -235,3 +283,4 @@ def cancel_only(callback: str = "generic:cancel") -> InlineKeyboardMarkup:
 
 def try_again_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[btn("🔁 Try Again", "forcesub:verify", ButtonStyle.PRIMARY)]])
+    
