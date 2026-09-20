@@ -65,16 +65,6 @@ class Config:
     port: int = field(default=8080)
     session_name: str = field(default="triss_bot")
 
-    # Public HTTPS base URL of THIS bot's own web server (Railway/Render
-    # give you one automatically; on a VPS you'd front it with a domain +
-    # reverse proxy). Only needed if you want the branded "Verifying..."
-    # landing page between the shortener and Telegram - see
-    # triss/web/server.py's /v/<session_id> route. If left blank, the
-    # shortener flow falls back to linking straight to the Telegram deep
-    # link (no landing page), exactly as before - this is optional
-    # cosmetic polish, never a security requirement.
-    public_base_url: Optional[str] = field(default=None)
-
     # Timeouts / limits (sensible defaults, not user secrets)
     session_state_timeout_seconds: int = field(default=15 * 60)
     default_link_expiry_seconds: Optional[int] = field(default=None)  # None = never expires by default
@@ -97,7 +87,6 @@ class Config:
             "storage_channel_configured": self.storage_channel_id is not None,
             "log_channel_configured": self.log_channel_id is not None,
             "port": self.port,
-            "public_base_url_configured": self.public_base_url is not None,
         }
 
 def load_config() -> Config:
@@ -117,8 +106,6 @@ def load_config() -> Config:
     log_channel_id = _get_optional_int("LOG_CHANNEL_ID")
 
     port = _get_optional_int("PORT") or 8080
-
-    public_base_url = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/") or None
 
     verification_secret = os.environ.get("VERIFICATION_SECRET", "").strip()
     if not verification_secret:
@@ -140,12 +127,10 @@ def load_config() -> Config:
         log_channel_id=log_channel_id,
         port=port,
         verification_secret=verification_secret,
-        public_base_url=public_base_url,
     )
     logger.info("Configuration loaded: %s", cfg.masked())
     return cfg
 
 
 config = load_config()
-
 
