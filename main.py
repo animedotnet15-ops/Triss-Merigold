@@ -49,6 +49,14 @@ async def _run() -> None:
         await web_runner.cleanup()
         sys.exit(1)
 
+    # The bot's @username is only known after app.start() inside startup()
+    # (see triss/bot.py) - inject it into the already-running web app so
+    # the /v/<session_id> landing page (triss/web/server.py) can build the
+    # correct Telegram deep link. Health checks work fine before this line
+    # runs; only that one cosmetic page needs it.
+    from triss.bot import app as bot_client
+    web_runner.app["bot_username"] = getattr(bot_client, "username", "") or ""
+
     logger.info("Triss File Store Bot is up and running.")
     await stop_event.wait()
 
@@ -65,3 +73,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+    
