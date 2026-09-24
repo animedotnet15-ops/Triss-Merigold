@@ -63,6 +63,59 @@ async def startup() -> None:
     _cleanup_task = asyncio.create_task(periodic_cleanup_loop())
     logger.info("Bot started as @%s (id=%s).", me.username, me.id)
 
+    await _verify_storage_channel_access()
+
+
+async def _verify_storage_channel_access() -> None:
+    """Catches a broken Store Channel (bot removed/demoted, channel
+    recreated with a stale ID in config/DB, etc.) at boot instead of at
+    the first /genlink, /batch, or delivery attempt. This is exactly the
+    failure mode where the bot shows 'Live' and connects fine, then every
+    genlink/batch/old-link silently fails deep inside
+    storage.py/delivery.py - surfacing it here, loudly, in logs (and to
+    the owner) removes the guesswork.
+    """
+    from triss.database import models as db
+    from pyrogram.errors import RPCError
+    from pyrogram.enums import ChatMemberStatus
+
+    try:
+        settings = await db.get_settings()
+        channel_id = settings.get("storage_channel_id") or config.storage_channel_id
+        if not channel_id:
+            logger.warning(
+                "No Store Channel configured yet - /genlink and /batch will "
+                "refuse to store content until one is set via /settings -> "
+                "Store Channel."
+            )
+            return
+
+        member = await app.get_chat_member(channel_id, "me")
+        if member.status not in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER):
+            raise RuntimeError(f"bot is only '{member.status}' in the Store Channel, not admin")
+
+        logger.info("Store Channel access verified (id=%s).", channel_id)
+    except Exception as e:
+        logger.critical(
+            "STORE CHANNEL CHECK FAILED (id=%s): %s. genlink, batch, and "
+            "delivery of every existing link will fail until this is fixed - "
+            "re-add the bot as admin in that channel (Post Messages + Edit "
+            "Messages permissions), or update the Store Channel via "
+            "/settings if the channel itself changed.",
+            channel_id, e,
+        )
+        try:
+            await app.send_message(
+                config.owner_id,
+                "🚨 Store Channel check failed at startup: "
+                f"<code>{e}</code>\n\n"
+                "genlink/batch/link delivery will not work until the bot is "
+                "re-added as admin in the Store Channel, or you reconfigure "
+                "it via /settings -> 🏪 Store Channel.",
+            )
+        except RPCError:
+            pass
+
 
 async def shutdown() -> None:
     logger.info("Shutting down Triss File Store Bot...")
