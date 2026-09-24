@@ -14,6 +14,7 @@ import asyncio
 import logging
 
 from pyrogram import Client
+from pyrogram.enums import ParseMode
 
 from triss.config import config
 from triss.database.mongodb import database
@@ -27,6 +28,18 @@ app = Client(
     api_hash=config.api_hash,
     bot_token=config.bot_token,
     in_memory=True,
+    # BUG FIX (font/symbol support): Pyrogram's default (no parse_mode
+    # set) mixes Markdown AND HTML syntax in the same message, but the
+    # Markdown dialect this bot's templates used to rely on (see
+    # triss/utils/formatting.py) has 9 reserved characters (\*_~`|[]()) -
+    # any of them appearing LITERALLY in owner-typed custom text (a
+    # pasted "fancy font"/symbol decoration, a stray asterisk, etc.) gets
+    # misread as a formatting delimiter, corrupting or truncating the
+    # message. HTML has only 3 reserved characters (& < >), which
+    # triss.utils.formatting now escapes correctly wherever dynamic text
+    # is substituted - pinning parse_mode to HTML here, with every
+    # template converted to <b>/<code> tags, removes that class of bug.
+    parse_mode=ParseMode.HTML,
 )
 
 _cleanup_task: asyncio.Task | None = None
@@ -35,6 +48,14 @@ _cleanup_task: asyncio.Task | None = None
 async def startup() -> None:
     logger.info("Starting Triss File Store Bot...")
     await database.connect()
+
+    # Warm the in-memory admin cache (see triss.utils.auth) so every
+    # owner-only permission check works immediately, before the first
+    # /addadmin/removeadmin call of this run.
+    from triss.database import models as db
+    from triss.utils import auth
+    auth.set_admin_cache(await db.get_admin_ids())
+
     await app.start()
     me = await app.get_me()
     app.username = me.username  # convenient cache used by deep-link builders
@@ -68,3 +89,5 @@ from triss.handlers import batch as _batch_handlers  # noqa: E402,F401
 from triss.handlers import broadcast as _broadcast_handlers  # noqa: E402,F401
 from triss.handlers import settings as _settings_handlers  # noqa: E402,F401
 from triss.handlers import callbacks as _callback_handlers  # noqa: E402,F401
+from triss.handlers import admin as _admin_handlers  # noqa: E402,F401
+from triss.handlers import linkdl as _linkdl_handlers  # noqa: E402,F401
