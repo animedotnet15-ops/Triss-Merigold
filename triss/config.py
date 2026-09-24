@@ -65,6 +65,16 @@ class Config:
     port: int = field(default=8080)
     session_name: str = field(default="triss_bot")
 
+    # Public HTTPS base URL of THIS bot's own web server (Railway/Render
+    # give you one automatically). ONLY needed for /linkdl's real browser
+    # download links (triss/web/server.py's /dl/<token> route, which
+    # streams the file over plain HTTP) - every other feature in this bot
+    # works with this left blank. If blank, /linkdl still stores files
+    # and creates a token, but has nowhere public to host the download
+    # URL, so it tells the owner to configure this instead of sending a
+    # broken link.
+    public_base_url: Optional[str] = field(default=None)
+
     # Timeouts / limits (sensible defaults, not user secrets)
     session_state_timeout_seconds: int = field(default=15 * 60)
     default_link_expiry_seconds: Optional[int] = field(default=None)  # None = never expires by default
@@ -85,6 +95,7 @@ class Config:
             "database_name": self.database_name,
             "owner_id_set": bool(self.owner_id),
             "storage_channel_configured": self.storage_channel_id is not None,
+            "public_base_url_configured": self.public_base_url is not None,
             "log_channel_configured": self.log_channel_id is not None,
             "port": self.port,
         }
@@ -106,6 +117,7 @@ def load_config() -> Config:
     log_channel_id = _get_optional_int("LOG_CHANNEL_ID")
 
     port = _get_optional_int("PORT") or 8080
+    public_base_url = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/") or None
 
     verification_secret = os.environ.get("VERIFICATION_SECRET", "").strip()
     if not verification_secret:
@@ -126,6 +138,7 @@ def load_config() -> Config:
         storage_channel_id=storage_channel_id,
         log_channel_id=log_channel_id,
         port=port,
+        public_base_url=public_base_url,
         verification_secret=verification_secret,
     )
     logger.info("Configuration loaded: %s", cfg.masked())
@@ -133,4 +146,5 @@ def load_config() -> Config:
 
 
 config = load_config()
+
 
