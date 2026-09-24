@@ -27,11 +27,25 @@ logger = logging.getLogger("triss.delivery")
 
 async def _copy_one(client: Client, user_id: int, chat_id: int, message_id: int,
                      retries: int = 0, message_effect_id: int | None = None) -> Message | None:
+    kwargs = dict(chat_id=user_id, from_chat_id=chat_id, message_id=message_id)
+    if message_effect_id is not None:
+        kwargs["message_effect_id"] = message_effect_id
     try:
-        return await client.copy_message(
-            chat_id=user_id, from_chat_id=chat_id, message_id=message_id,
-            message_effect_id=message_effect_id,
-        )
+        return await client.copy_message(**kwargs)
+    except TypeError as e:
+        # The installed Pyrogram/Kurigram build's copy_message() does not
+        # accept message_effect_id at all (unlike send_*), so any attempt
+        # to pass it - even a real, non-None value - raises TypeError
+        # rather than being ignored. Retry once without it so message
+        # effects degrade gracefully instead of breaking every delivery.
+        if "message_effect_id" in kwargs and "message_effect_id" in str(e):
+            logger.warning(
+                "Installed copy_message() does not support message_effect_id; "
+                "retrying delivery without the effect."
+            )
+            kwargs.pop("message_effect_id", None)
+            return await client.copy_message(**kwargs)
+        raise
     except FloodWait as e:
         if retries >= config.flood_wait_max_retries:
             logger.error("Giving up on delivering message %s after repeated FloodWait.", message_id)
@@ -123,3 +137,4 @@ async def send_temporary(client: Client, chat_id: int, text: str, **kwargs) -> M
         return None
     await schedule_auto_delete(client, chat_id, [msg.id])
     return msg
+  
