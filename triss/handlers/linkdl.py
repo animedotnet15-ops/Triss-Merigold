@@ -39,6 +39,7 @@ from triss.services.cleanup import session_manager
 from triss.utils.auth import owner_filter, deny_if_not_owner, deny_if_not_super_owner
 from triss.utils.keyboards import url_btn
 from triss.utils.linkdl_token import encode_linkdl_token
+from triss.utils.effects import resolve_effect_id, call_with_optional_effect
 
 logger = logging.getLogger("triss.handlers.linkdl")
 
@@ -164,7 +165,13 @@ async def linkdl_capture(client, message: Message) -> None:
     caption_template = linkdl.get("caption") or DEFAULT_LINKDL_CAPTION
     caption = caption_template.replace("{link}", download_url)
 
-    await message.reply_text(
-        caption,
+    linkdl_effect = settings.get("linkdl_effect", {})
+    effect_id = resolve_effect_id(linkdl_effect.get("effect")) if linkdl_effect.get("enabled") else None
+
+    await call_with_optional_effect(
+        message.reply_text,
+        text=caption,
         reply_markup=InlineKeyboardMarkup([[url_btn("⬇️ Download", download_url)]]),
+        message_effect_id=effect_id,
     )
+    
