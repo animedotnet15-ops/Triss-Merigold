@@ -42,3 +42,20 @@ def resolve_effect_id(name: str | None) -> int | None:
     if not name:
         return None
     return MESSAGE_EFFECTS.get(name)
+
+
+async def call_with_optional_effect(func, **kwargs):
+    """Calls a Pyrogram send_*/reply_* coroutine, including
+    message_effect_id only when useful, and retrying once without it if
+    the installed Pyrogram/Kurigram build rejects the kwarg outright
+    (some builds only support message_effect_id on a subset of send
+    methods - see triss.services.delivery for the same issue on
+    copy_message, which never supports it at all per the Bot API)."""
+    try:
+        return await func(**kwargs)
+    except TypeError as e:
+        if "message_effect_id" in kwargs and "message_effect_id" in str(e):
+            kwargs = {k: v for k, v in kwargs.items() if k != "message_effect_id"}
+            return await func(**kwargs)
+        raise
+        
