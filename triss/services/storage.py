@@ -16,7 +16,11 @@ import logging
 
 from pyrogram import Client
 from pyrogram.types import Message
-from pyrogram.errors import FloodWait, RPCError
+from pyrogram.errors import (
+    FloodWait, RPCError,
+    ChatAdminRequired, ChatWriteForbidden, ChannelPrivate,
+    PeerIdInvalid, ChannelInvalid, UserNotParticipant,
+)
 
 from triss.config import config
 from triss.database import models as db
@@ -52,6 +56,21 @@ async def store_message(client: Client, message: Message, retries: int = 0) -> M
         logger.warning("FloodWait %ss while storing message; retrying.", e.value)
         await asyncio.sleep(e.value)
         return await store_message(client, message, retries=retries + 1)
+    except (ChatAdminRequired, ChatWriteForbidden) as e:
+        logger.exception("Bot is not admin (or lacks post rights) in the Store Channel.")
+        raise StorageError(
+            "The bot is not an admin in the Store Channel (or is missing "
+            "'Post Messages' rights). Re-add it as admin there, then try "
+            "again."
+        ) from e
+    except (ChannelPrivate, ChannelInvalid, PeerIdInvalid, UserNotParticipant) as e:
+        logger.exception("Store Channel is unreachable (deleted, ID changed, or bot not a member).")
+        raise StorageError(
+            "The configured Store Channel could not be reached - it may "
+            "have been deleted, recreated with a new ID, or the bot was "
+            "removed from it. Set a working channel via /settings -> "
+            "🏪 Store Channel."
+        ) from e
     except RPCError as e:
         logger.exception("Failed to store message in Store Channel.")
         raise StorageError(f"Could not store this content: {e}") from e
@@ -63,3 +82,4 @@ def message_ref(stored: Message, index: int) -> dict:
         "message_id": stored.id,
         "index": index,
     }
+    
