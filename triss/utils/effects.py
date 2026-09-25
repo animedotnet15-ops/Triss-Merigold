@@ -37,11 +37,44 @@ EFFECT_LABELS: dict[str, str] = {
     "poop": "💩 Poop",
 }
 
+# The 4 places in the bot that can play an effect - one settings category
+# each, all living together under settings.effects (see
+# triss.database.mongodb DEFAULT_SETTINGS). "delivery" is deliberately
+# named to match its existing behaviour (last file of a genlink/batch
+# delivery), the other three are the ones the owner asked to add.
+EFFECT_CATEGORIES: dict[str, str] = {
+    "start": "⚡ Start Effect",
+    "bypass": "🚨 Bypass Detected Effect",
+    "delivery": "🎉 Files Delivery Effect",
+    "linkdl": "🔥 Direct Download Effect",
+}
+
 
 def resolve_effect_id(name: str | None) -> int | None:
     if not name:
         return None
     return MESSAGE_EFFECTS.get(name)
+
+
+def pick_category_effect_id(settings: dict, category: str) -> int | None:
+    """Resolves the effect id to use for one category (start/bypass/
+    delivery/linkdl), honouring the master on/off switch, the
+    per-category on/off switch, and - since multiple emojis can be
+    selected per category - picking one at random from whichever are
+    currently enabled for it. Telegram only allows ONE effect per
+    message, so a random pick is how "multiple emojis enabled" turns
+    into an actual send."""
+    effects_settings = settings.get("effects", {})
+    if not effects_settings.get("master_enabled", True):
+        return None
+    cat = effects_settings.get("categories", {}).get(category, {})
+    if not cat.get("enabled"):
+        return None
+    selected = cat.get("selected") or []
+    if not selected:
+        return None
+    import random
+    return resolve_effect_id(random.choice(selected))
 
 
 async def call_with_optional_effect(func, **kwargs):
