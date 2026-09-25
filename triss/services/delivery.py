@@ -20,7 +20,7 @@ from pyrogram.errors import FloodWait, RPCError
 from triss.config import config
 from triss.database import models as db
 from triss.utils.formatting import AUTO_DELETE_NOTICE_TEXT
-from triss.utils.effects import resolve_effect_id
+from triss.utils.effects import pick_category_effect_id
 
 logger = logging.getLogger("triss.delivery")
 
@@ -70,8 +70,7 @@ async def deliver_link_content(client: Client, user_id: int, link_doc: dict) -> 
     delivered: list[Message] = []
     messages = sorted(link_doc.get("messages", []), key=lambda m: m.get("index", 0))
     settings = await db.get_settings()
-    delivery_effect = settings.get("delivery_effect", {})
-    effect_id = resolve_effect_id(delivery_effect.get("effect")) if delivery_effect.get("enabled") else None
+    effect_id = pick_category_effect_id(settings, "delivery")
 
     for i, ref in enumerate(messages):
         is_last = i == len(messages) - 1
@@ -137,4 +136,4 @@ async def send_temporary(client: Client, chat_id: int, text: str, **kwargs) -> M
         return None
     await schedule_auto_delete(client, chat_id, [msg.id])
     return msg
-  
+              
