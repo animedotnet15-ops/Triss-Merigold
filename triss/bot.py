@@ -144,3 +144,4 @@ from triss.handlers import settings as _settings_handlers  # noqa: E402,F401
 from triss.handlers import callbacks as _callback_handlers  # noqa: E402,F401
 from triss.handlers import admin as _admin_handlers  # noqa: E402,F401
 from triss.handlers import linkdl as _linkdl_handlers  # noqa: E402,F401
+from triss.handlers import help as _help_handlers  # noqa: E402,F401
