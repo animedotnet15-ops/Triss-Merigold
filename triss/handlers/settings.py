@@ -13,6 +13,7 @@ from pyrogram import filters
 from pyrogram.types import Message
 
 from triss.bot import app
+from triss.database import models as db
 from triss.utils.auth import deny_if_not_owner
 from triss.utils.keyboards import settings_main_menu
 
@@ -26,4 +27,8 @@ SETTINGS_HEADER = (
 async def settings_command(client, message: Message) -> None:
     if await deny_if_not_owner(message):
         return
-    await message.reply_text(SETTINGS_HEADER, reply_markup=settings_main_menu())
+    settings = await db.get_settings()
+    total_users = await db.count_users()
+    header = f"{SETTINGS_HEADER}\n\n👥 Total bot users: {total_users:,}"
+    await message.reply_text(header, reply_markup=settings_main_menu(settings))
+    
