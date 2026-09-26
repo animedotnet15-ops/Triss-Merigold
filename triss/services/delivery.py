@@ -154,4 +154,4 @@ async def send_temporary(client: Client, chat_id: int, text: str, **kwargs) -> M
     await schedule_auto_delete(client, chat_id, [msg.id])
     return msg
 
-              
+
