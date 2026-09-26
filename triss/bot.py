@@ -59,6 +59,12 @@ async def startup() -> None:
     await app.start()
     me = await app.get_me()
     app.username = me.username  # convenient cache used by deep-link builders
+
+    # Refresh MESSAGE_EFFECTS from Telegram's live catalog (falls back to
+    # the hardcoded seed ids on any failure - see triss.utils.effects).
+    from triss.utils.effects import refresh_message_effects
+    await refresh_message_effects(app)
+
     global _cleanup_task
     _cleanup_task = asyncio.create_task(periodic_cleanup_loop())
     logger.info("Bot started as @%s (id=%s).", me.username, me.id)
