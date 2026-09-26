@@ -133,9 +133,15 @@ async def refresh_message_effects(client) -> None:
     missing = set(_EFFECT_EMOJI) - matched
     if missing:
         logger.info(
-            "Telegram's live effect catalog didn't include %s - keeping this bot's seed id(s) for them.",
+            "Telegram's live effect catalog didn't include %s - keeping this bot's seed id(s) for them "
+            "(unconfirmed - if effects using these don't animate, this is why).",
             ", ".join(EFFECT_LABELS[k] for k in missing),
         )
+    logger.info(
+        "Message effects ready: %d/%d confirmed live (%s), %d unconfirmed seed (%s).",
+        len(matched), len(_EFFECT_EMOJI), ", ".join(sorted(matched)) or "none",
+        len(missing), ", ".join(sorted(missing)) or "none",
+    )
 
 
 def resolve_effect_id(name: str | None) -> int | None:
@@ -167,15 +173,28 @@ def pick_category_effect_id(settings: dict, category: str) -> int | None:
 async def call_with_optional_effect(func, **kwargs):
     """Calls a Pyrogram send_*/reply_* coroutine, including
     message_effect_id only when useful, and retrying once without it if
-    the installed Pyrogram/Kurigram build rejects the kwarg outright
-    (some builds only support message_effect_id on a subset of send
-    methods - see triss.services.delivery for the same issue on
-    copy_message, which never supports it at all per the Bot API)."""
+    it can't go through - either the installed Pyrogram/Kurigram build
+    rejects the kwarg outright (TypeError - some builds only support
+    message_effect_id on a subset of send methods, see
+    triss.services.delivery for the same issue on copy_message, which
+    never supports it at all per the Bot API), or Telegram itself
+    rejects the id at send time (an RPCError - e.g. a seed id that live
+    catalog refresh didn't confirm turning out to be wrong). Both cases
+    are logged loudly instead of swallowed, so a "no animation" report
+    can be root-caused from the logs instead of guessed at."""
+    effect_id = kwargs.get("message_effect_id")
+    if effect_id is not None:
+        logger.info("Sending with message_effect_id=%s via %s", effect_id, getattr(func, "__name__", func))
     try:
         return await func(**kwargs)
-    except TypeError as e:
-        if "message_effect_id" in kwargs and "message_effect_id" in str(e):
-            kwargs = {k: v for k, v in kwargs.items() if k != "message_effect_id"}
-            return await func(**kwargs)
-        raise
-        
+    except Exception as e:
+        if effect_id is None or "message_effect_id" not in kwargs:
+            raise
+        logger.warning(
+            "message_effect_id=%s was rejected by %s (%s: %s) - retrying without it.",
+            effect_id, getattr(func, "__name__", func), type(e).__name__, e,
+        )
+        kwargs = {k: v for k, v in kwargs.items() if k != "message_effect_id"}
+        return await func(**kwargs)
+
+    
