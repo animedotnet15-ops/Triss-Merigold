@@ -53,7 +53,24 @@ async def _copy_one(client: Client, user_id: int, chat_id: int, message_id: int,
         await asyncio.sleep(e.value)
         return await _copy_one(client, user_id, chat_id, message_id, retries=retries + 1,
                                 message_effect_id=message_effect_id)
-    except RPCError:
+    except RPCError as e:
+        # An invalid/rejected message_effect_id (e.g. an unconfirmed seed
+        # id - see triss.utils.effects) also surfaces as an RPCError here,
+        # not a TypeError - without this branch it would fail the WHOLE
+        # delivery, not just skip the animation. Retry once without the
+        # effect before giving up, same as the TypeError case above.
+        if "message_effect_id" in kwargs:
+            logger.warning(
+                "copy_message rejected message_effect_id=%s (%s) delivering %s to %s; "
+                "retrying without the effect.",
+                kwargs["message_effect_id"], e, message_id, user_id,
+            )
+            kwargs.pop("message_effect_id", None)
+            try:
+                return await client.copy_message(**kwargs)
+            except RPCError:
+                logger.exception("Failed to deliver stored message %s to user %s.", message_id, user_id)
+                return None
         logger.exception("Failed to deliver stored message %s to user %s.", message_id, user_id)
         return None
 
@@ -136,4 +153,5 @@ async def send_temporary(client: Client, chat_id: int, text: str, **kwargs) -> M
         return None
     await schedule_auto_delete(client, chat_id, [msg.id])
     return msg
+
               
