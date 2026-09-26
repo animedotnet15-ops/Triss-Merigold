@@ -47,6 +47,11 @@ _cleanup_task: asyncio.Task | None = None
 
 async def startup() -> None:
     logger.info("Starting Triss File Store Bot...")
+    try:
+        import importlib.metadata
+        logger.info("kurigram package version installed: %s", importlib.metadata.version("kurigram"))
+    except Exception:
+        logger.info("Could not determine installed kurigram package version.")
     await database.connect()
 
     # Warm the in-memory admin cache (see triss.utils.auth) so every
