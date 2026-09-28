@@ -18,21 +18,45 @@ requirements.
   with FloodWait handling and automatic pruning of users who blocked the bot.
 - **`/settings`** — a fully button-driven admin panel:
   - 🏠 Welcome (photo, text, spoiler image, sticker, animation speed, preview)
-  - 🌐 Private Links (how-to for genlink/batch/custombatch)
+  - 💬 Comments (how-to for genlink/batch/custombatch)
   - 📣 Force Sub (channels, groups, folders)
   - 🧹 Auto Delete (preset or custom durations)
-  - 🌐 Shortener (domain, API key, min/max verification time, tutorial video, on/off)
+  - 🌐 Shortener (Old Method — domain, API key, min/max verification time,
+    customizable popups, anti-bypass, tutorial video, on/off)
+  - ♻️ System Access (New Method — its own fully separate domain/API
+    key/min-max time/popups/anti-bypass, plus a Verify Time preset
+    30m/1h/3h/6h/12h/24h; see below)
+  - 📥 Direct Download (linkdl)
+  - 🔒 Restrict Content (on/off — see below)
   - ⚙️ Bot Maintenance (Active / Maintenance)
   - 🗄️ Backup & Restore (config + metadata, never secrets)
   - 🏪 Store Channel configuration
-- **Shortener + per-access verification** — when enabled, every fresh
-  access to a protected link creates an independent, server-side-timed
+- **Shortener + per-access verification (Old Method)** — when enabled, every
+  fresh access to a protected link creates an independent, server-side-timed
   verification session (never reused across accesses or users), routes
   the user through the configured shortener, and only delivers the file
   if the round trip took between the configured minimum and maximum
   time. Too-fast returns are flagged as a bypass attempt; too-slow
   returns are reported as expired — both offer a "Try Again" that always
   starts a brand-new session.
+- **♻️ System Access (New Method)** — an alternative to Old Method,
+  mutually exclusive with it (enabling one automatically disables the
+  other; both can be off together). Instead of gating one link per
+  verification, ONE completed verification grants the user unlimited use
+  of *every* link in the bot for a configured duration (30m/1h/3h/6h/
+  12h/24h), after which they must verify again. Has its own fully
+  independent Domain/API key/Min-Max Time/Popups/Anti-Bypass, so it never
+  shares configuration with Old Method. Force Sub is unaffected and still
+  applies normally during an active System Access window.
+- **🔒 Restrict Content** — a single bot-wide toggle. When ON, every
+  message this bot sends — welcome, Force Sub prompts, Shortener/System
+  Access popups, broadcasts, delivered files, even the owner's own
+  settings replies — is sent with Telegram's own `protect_content=True`,
+  which disables forwarding and saving of that message for every
+  recipient. Implemented as a single patch on Pyrogram's Client send
+  methods (see `triss/utils/restrict.py`) so it applies instantly,
+  everywhere, without touching this codebase's ~170 individual send call
+  sites or requiring a restart.
 - Secure, unguessable share tokens (`secrets.token_urlsafe`) — no database
   IDs or Store Channel identifiers ever appear in a link.
 - The Store Channel is never exposed: all delivery uses `copy_message`,
@@ -201,6 +225,7 @@ triss/
         logging_service.py             # LOG_CHANNEL_ID notices
     utils/
         tokens.py, formatting.py, validators.py, keyboards.py, time_parser.py, auth.py
+        restrict.py       # Restrict Content: patches Client send_*/copy_message globally
     web/
         server.py           # aiohttp GET /health
 main.py                # entrypoint: runs web server + bot together
@@ -238,30 +263,44 @@ background sweep clears any session that goes untouched for 15 minutes.
 - **Shortener "callbacks" are not a real webhook.** No standard URL
   shortener offers a server-to-server callback into an arbitrary bot;
   they only redirect the user's browser. This implementation shortens a
-  link to the bot's **own** web server (`{PUBLIC_BASE_URL}/v/<session_id>`),
-  which is the one event a single-use proof can honestly be minted from,
-  and only *that* signed proof (never elapsed time by itself) unlocks the
-  final `/start verify_<session_id>.<proof>` delivery step — see
-  "Shortener verification flow" above for the full, honest security
-  model and its limits. That proof is required but not sufficient on its
-  own: delivery also requires the configured provider to genuinely attest
-  completion via `ShortenerProvider.verify_completion()`
-  (`supports_completion_verification = True` plus a real check). The
-  bundled `GenericQueryProvider` cannot do this, so Shortener cannot be
-  enabled with it at all — the `/settings` toggle fails closed with a
-  clear error rather than enabling a flow that could never deliver. If a
-  given shortener provider offers a genuine verification API, signed
-  callback, or completion token, implement a new `ShortenerProvider`
-  subclass in `triss/services/shortener.py` with real
-  `verify_completion()` logic — the rest of the verification system
-  (session lifecycle, proof, timing, replay/concurrency protection) is
-  already provider-agnostic. Enabling Shortener also requires
-  `PUBLIC_BASE_URL` to be set in the environment (see above); the
-  `/settings` toggle refuses to turn it on otherwise.
+  **Telegram deep link back to the bot itself**
+  (`https://t.me/<bot>?start=verify_<session_id><proof>`), not a URL on
+  any web server of ours — `proof` is a per-session secret minted at
+  session-creation time (hashed, never stored in plaintext) and is
+  required for delivery regardless of timing; elapsed time alone is
+  never treated as sufficient. See "Shortener verification flow" above
+  for the full, honest security model and its limits. `PUBLIC_BASE_URL`
+  is unrelated to this — it's only used by the separate `/linkdl` direct
+  HTTP-download feature.
+
+  `triss/services/shortener.py` defines a `ShortenerProvider` extension
+  point (`supports_completion_verification` / `verify_completion()`) for
+  a future provider that offers a genuine, provider-side completion
+  check; it is currently unused and does not gate anything, since no
+  such provider is integrated here — implementing one for a specific
+  paid API this project has no real credentials for would mean
+  fabricating an integration, which we won't do. The bundled
+  `GenericQueryProvider` (the common `?api=&url=&format=text` shortener
+  shape) can be enabled today with just a Domain and API key — Minimum
+  Time/Maximum Time is genuinely what gates delivery in that case, not a
+  completion callback.
 - **Elapsed-time checks assume the user's browser round-trip is what's
   being timed**, not network latency to the shortener's own servers;
   small clock/network variance is inherent to any time-boxed web
   redirect flow and is not something a Telegram bot can eliminate.
+- **System Access grants are per-user, bot-wide, and time-boxed only.**
+  There is no way to know from inside Telegram whether a user is still
+  "actively engaged" during their window — `system_access_until` is a
+  flat expiry timestamp, checked fresh on every access; it is not
+  revoked early for any reason (ban/mute checks still run independently
+  and still block a muted/banned user regardless of an active window).
+- **🔒 Restrict Content is genuinely bot-wide, including the owner's own
+  chat.** `protect_content` is a Telegram message property, not a
+  per-viewer permission — Telegram does not let a bot exempt specific
+  recipients (not even the bot's own owner) from it. While it's ON, the
+  owner also cannot forward their own `/genlink` confirmations, broadcast
+  drafts, or settings replies out of their chat with the bot; this is a
+  real Telegram platform behavior, not a bug in this implementation.
 
 ## What could not be runtime-tested
 
