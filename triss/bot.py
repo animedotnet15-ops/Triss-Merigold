@@ -160,10 +160,11 @@ async def shutdown() -> None:
 from triss.handlers import start as _start_handlers  # noqa: E402,F401
 from triss.handlers import genlink as _genlink_handlers  # noqa: E402,F401
 from triss.handlers import batch as _batch_handlers  # noqa: E402,F401
+from triss.handlers import autobatch as _autobatch_handlers  # noqa: E402,F401
 from triss.handlers import broadcast as _broadcast_handlers  # noqa: E402,F401
 from triss.handlers import settings as _settings_handlers  # noqa: E402,F401
 from triss.handlers import callbacks as _callback_handlers  # noqa: E402,F401
 from triss.handlers import admin as _admin_handlers  # noqa: E402,F401
 from triss.handlers import linkdl as _linkdl_handlers  # noqa: E402,F401
 from triss.handlers import help as _help_handlers  # noqa: E402,F401
-    
+
