@@ -91,6 +91,26 @@ async def _is_member(client: Client, chat_id: int, user_id: int) -> bool:
         return False
 
 
+async def _is_request_still_pending(client: Client, chat_id: int, user_id: int) -> bool:
+    """Telegram never notifies the bot when an admin declines a join
+    request through Telegram's own UI (only approvals via the bot's own
+    API fire an update) - so the only way to detect a decline is to ask
+    Telegram's live pending list directly. FAILS CLOSED on any error:
+    if this can't be confirmed, the request is treated as gone rather
+    than trusting a possibly-stale local record."""
+    try:
+        async for joiner in client.get_chat_join_requests(chat_id):
+            if joiner.user.id == user_id:
+                return True
+        return False
+    except RPCError:
+        logger.warning(
+            "Could not confirm live join-request status for user %s in chat %s - treating as declined.",
+            user_id, chat_id,
+        )
+        return False
+
+
 async def _satisfies_request_mode(client: Client, chat_id: int, user_id: int) -> bool:
     """A "request"-mode entry is satisfied by genuine membership, or by a
     submitted Join Request that is still standing.
@@ -98,7 +118,14 @@ async def _satisfies_request_mode(client: Client, chat_id: int, user_id: int) ->
     A stored request must NOT outlive the user's membership: if the user
     was seen as a member (request approved) and has since LEFT, the
     record is deleted and they must request/join again. (The chat-member
-    listener below also deletes it the moment a leave event arrives.)"""
+    listener below also deletes it the moment a leave event arrives.)
+
+    A stored request also must NOT outlive an admin DECLINING it - since
+    that never generates an update the bot can listen for, every check
+    while a request is still only "pending" (not yet approved) reconfirms
+    it against Telegram's live list (see _is_request_still_pending). Once
+    approved (member_seen True) this live check is skipped - a decline
+    can't happen to an already-approved request."""
     if await _is_member(client, chat_id, user_id):
         await db.mark_join_request_member(chat_id, user_id)
         return True
@@ -108,7 +135,10 @@ async def _satisfies_request_mode(client: Client, chat_id: int, user_id: int) ->
     if doc.get("member_seen"):
         await db.delete_join_request(chat_id, user_id)
         return False
-    return True
+    if await _is_request_still_pending(client, chat_id, user_id):
+        return True
+    await db.delete_join_request(chat_id, user_id)
+    return False
 
 
 async def get_unsatisfied_requirements(client: Client, user_id: int) -> list[dict]:
@@ -173,3 +203,4 @@ async def _forget_join_request_on_leave(client: Client, update) -> None:
             await db.delete_join_request(update.chat.id, user.id)
     except Exception:
         logger.debug("chat member update handling failed.", exc_info=True)
+          
