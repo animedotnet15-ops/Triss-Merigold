@@ -104,11 +104,19 @@ async def _is_request_still_pending(client: Client, chat_id: int, user_id: int) 
                 return True
         return False
     except RPCError:
+        # Fails OPEN here (unlike every other check in this file): this
+        # live call needs "Invite Users via Link" admin rights and full
+        # kurigram support for get_chat_join_requests, either of which
+        # can be missing/erroring for reasons that have nothing to do
+        # with the user's actual request. An error here must never
+        # block someone who genuinely has a pending request - trust the
+        # stored record instead of guessing "declined".
         logger.warning(
-            "Could not confirm live join-request status for user %s in chat %s - treating as declined.",
+            "Could not confirm live join-request status for user %s in chat %s - "
+            "trusting the stored pending record instead.",
             user_id, chat_id,
         )
-        return False
+        return True
 
 
 async def _satisfies_request_mode(client: Client, chat_id: int, user_id: int) -> bool:
@@ -203,4 +211,4 @@ async def _forget_join_request_on_leave(client: Client, update) -> None:
             await db.delete_join_request(update.chat.id, user.id)
     except Exception:
         logger.debug("chat member update handling failed.", exc_info=True)
-          
+  
