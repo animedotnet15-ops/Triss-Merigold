@@ -48,7 +48,7 @@ def _date() -> str:
 
 
 def _time() -> str:
-    return _now_ist().strftime("%H:%M:%S IST")
+    return _now_ist().strftime("%I:%M:%S %p IST")
 
 
 async def _send_status(client: Client, status: str, user_id: int,
@@ -126,4 +126,4 @@ async def log_linkdl_files(client: Client, user_id: int, username: str | None,
                             first_name: str | None, delivered_link: str | None = None) -> None:
     extra = [("Delivery Files", delivered_link)] if delivered_link else []
     await _send_status(client, "Linkdl Files", user_id, username, first_name, extra)
-                            
+                       
