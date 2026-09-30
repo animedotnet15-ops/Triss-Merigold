@@ -37,6 +37,7 @@ from pyrogram import Client
 logger = logging.getLogger("triss.restrict")
 
 _restrict_enabled_cache: bool = False
+_log_channel_id_cache: int | None = None
 _installed = False
 
 # Only the Client methods actually invoked (directly or via a
@@ -64,10 +65,31 @@ def get_restrict_content_cache() -> bool:
     return _restrict_enabled_cache
 
 
+def set_log_channel_id_cache(chat_id: int | None) -> None:
+    """Called once at startup and again the instant the owner changes the
+    active Log Channel (triss.handlers.callbacks' chan:log:* actions), so
+    logging_service/linkdl's sends INTO the Log Channel are never
+    protect_content'd - that channel is the owner's own audit trail, not
+    "content" being redistributed, and messages there must stay
+    forwardable regardless of the Restrict Content setting."""
+    global _log_channel_id_cache
+    _log_channel_id_cache = chat_id
+
+
+def _destination_chat_id(args, kwargs) -> object:
+    if "chat_id" in kwargs:
+        return kwargs["chat_id"]
+    return args[0] if args else None
+
+
 def _wrap(original, name: str):
     @functools.wraps(original)
     async def wrapper(self, *args, **kwargs):
-        if _restrict_enabled_cache and "protect_content" not in kwargs:
+        is_log_channel = (
+            _log_channel_id_cache is not None
+            and _destination_chat_id(args, kwargs) == _log_channel_id_cache
+        )
+        if _restrict_enabled_cache and not is_log_channel and "protect_content" not in kwargs:
             kwargs["protect_content"] = True
         try:
             return await original(self, *args, **kwargs)
@@ -106,3 +128,4 @@ def install_restrict_content_patch() -> None:
         setattr(Client, name, _wrap(original, name))
     _installed = True
     logger.info("Restrict Content patch installed on: %s", ", ".join(_PATCHED_METHODS))
+    
