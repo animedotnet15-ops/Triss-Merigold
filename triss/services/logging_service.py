@@ -1,40 +1,33 @@
 """
 triss.services.logging_service
 ===============================
-Sends event notices to LOG_CHANNEL_ID if it is configured. Silently
-disabled (with a one-time warning) if no log channel is configured.
-
-Per spec, the log channel carries ONLY this fixed 6-line format, for
-ONLY these status types - nothing else (no raw files, no captions, no
-link text, no tokens):
+Sends event notices to the active Log Channel (triss.database.models.
+get_active_channel_id("log")). Silently disabled if none is set.
 
     Name : <first name or ->
     Username : <@username or ->
-    User id : <numeric id>
-    Date : <YYYY-MM-DD>
-    Time : <HH:MM:SS UTC>
+    ID : <numeric id>
+    Date : <DD-MM-YYYY>
+    Time : <HH:MM:SS IST>                      (Tamil Nadu / India time, UTC+5:30)
     Status : <Bot Start | Verify Complete | Bypass Detected | Mute | Ban | Linkdl Files>
+    Verify Time : <N seconds>                  (Verify Complete only - link generated -> verification completed)
+    Delivery Files : <link>                    (only when this event actually delivered content)
 
 Six functions, one per status, all calling the single private
-`_send_status` formatter so every entry is byte-for-byte the same shape:
-  a) log_bot_start        - Status: Bot Start        (triss.handlers.start, both plain AND token starts)
-  b) log_verified          - Status: Verify Complete   (triss.handlers.start, on successful shortener verification)
-  c) log_bypass_detected   - Status: Bypass Detected   (triss.handlers.start, on the BYPASS outcome)
-  d) log_user_muted        - Status: Mute              (triss.handlers.admin, on /mute)
-  e) log_user_banned       - Status: Ban               (triss.handlers.admin, on /ban)
-  f) log_linkdl_files      - Status: Linkdl Files      (triss.handlers.linkdl, alongside the copied file)
-
-NOTE: genlink/batch link creation deliberately does NOT log here anymore
-- only the 6 statuses above are allowed in the log channel per spec
-("Na Ippa mention pannirukke mattutha log channel la varanum, vera
-edhum vara kudathu"). genlink/batch still store into the Store Channel
-+ MongoDB exactly as before; that's unrelated to this log channel.
+`_send_status` formatter so every entry is the same shape:
+  a) log_bot_start        - Status: Bot Start
+  b) log_verified          - Status: Verify Complete  (+ Verify Time, + Delivery Files)
+  c) log_bypass_detected   - Status: Bypass Detected
+  d) log_user_muted        - Status: Mute
+  e) log_user_banned       - Status: Ban
+  f) log_linkdl_files      - Status: Linkdl Files      (+ Delivery Files)
 """
 
 from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime, timedelta, timezone
 
 from pyrogram import Client
 from pyrogram.errors import RPCError
@@ -43,32 +36,41 @@ from triss.database import models as db
 
 logger = logging.getLogger("triss.logging_service")
 
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def _now_ist() -> datetime:
+    return datetime.now(timezone.utc).astimezone(IST)
+
 
 def _date() -> str:
-    return time.strftime("%Y-%m-%d", time.gmtime())
+    return _now_ist().strftime("%d-%m-%Y")
 
 
 def _time() -> str:
-    return time.strftime("%H:%M:%S UTC", time.gmtime())
+    return _now_ist().strftime("%H:%M:%S IST")
 
 
 async def _send_status(client: Client, status: str, user_id: int,
-                        username: str | None, first_name: str | None) -> None:
+                        username: str | None, first_name: str | None,
+                        extra: list[tuple[str, str]] | None = None) -> None:
     log_channel_id = await db.get_active_channel_id("log")
     if not log_channel_id:
         return
-    text = (
-        f"Name : {first_name or '-'}\n"
-        f"Username : {('@' + username) if username else '-'}\n"
-        f"User id : {user_id}\n"
-        f"Date : {_date()}\n"
-        f"Time : {_time()}\n"
-        f"Status : {status}"
-    )
+    lines = [
+        f"Name : {first_name or '-'}",
+        f"Username : {('@' + username) if username else '-'}",
+        f"ID : {user_id}",
+        f"Date : {_date()}",
+        f"Time : {_time()}",
+        f"Status : {status}",
+    ]
+    for label, value in (extra or []):
+        lines.append(f"{label} : {value}")
     try:
-        await client.send_message(log_channel_id, text)
+        await client.send_message(log_channel_id, "\n".join(lines))
     except RPCError:
-        logger.warning("Failed to deliver log event to LOG_CHANNEL_ID.", exc_info=True)
+        logger.warning("Failed to deliver log event to the Log Channel.", exc_info=True)
     except Exception:
         logger.warning("Unexpected error sending log event.", exc_info=True)
 
@@ -83,8 +85,15 @@ async def log_bot_start(client: Client, user_id: int, username: str | None,
 # --- b) verified --------------------------------------------------------------
 
 async def log_verified(client: Client, user_id: int, username: str | None,
-                        first_name: str | None, access_token: str | None = None) -> None:
-    await _send_status(client, "Verify Complete", user_id, username, first_name)
+                        first_name: str | None, access_token: str | None = None,
+                        verify_seconds: float | int | None = None,
+                        delivered_link: str | None = None) -> None:
+    extra = []
+    if verify_seconds is not None:
+        extra.append(("Verify Time", f"{round(verify_seconds)} seconds"))
+    if delivered_link:
+        extra.append(("Delivery Files", delivered_link))
+    await _send_status(client, "Verify Complete", user_id, username, first_name, extra)
 
 
 # --- c) bypass detected ---------------------------------------------------------
@@ -114,5 +123,7 @@ async def log_user_banned(client: Client, user_id: int, banned_by: int | None = 
 # --- f) linkdl files ---------------------------------------------------------------
 
 async def log_linkdl_files(client: Client, user_id: int, username: str | None,
-                            first_name: str | None) -> None:
-    await _send_status(client, "Linkdl Files", user_id, username, first_name)
+                            first_name: str | None, delivered_link: str | None = None) -> None:
+    extra = [("Delivery Files", delivered_link)] if delivered_link else []
+    await _send_status(client, "Linkdl Files", user_id, username, first_name, extra)
+                            
