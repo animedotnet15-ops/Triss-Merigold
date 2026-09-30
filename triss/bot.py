@@ -72,9 +72,10 @@ async def startup() -> None:
     # Warm the in-memory Restrict Content cache (see triss.utils.restrict)
     # from the persisted setting, so protect_content behaves correctly on
     # the very first message this run sends, before any toggle is pressed.
-    from triss.utils.restrict import set_restrict_content_cache
+    from triss.utils.restrict import set_restrict_content_cache, set_log_channel_id_cache
     _settings = await db.get_settings()
     set_restrict_content_cache(_settings.get("restrict_content", False))
+    set_log_channel_id_cache(await db.get_active_channel_id("log"))
 
     await app.start()
     me = await app.get_me()
@@ -168,3 +169,4 @@ from triss.handlers import admin as _admin_handlers  # noqa: E402,F401
 from triss.handlers import linkdl as _linkdl_handlers  # noqa: E402,F401
 from triss.handlers import help as _help_handlers  # noqa: E402,F401
 
+    
