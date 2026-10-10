@@ -100,8 +100,13 @@ async def log_verified(client: Client, user_id: int, username: str | None,
 
 async def log_bypass_detected(client: Client, user_id: int, username: str | None,
                                first_name: str | None, strike_count: int = 0,
-                               strike_limit: int = 0) -> None:
-    await _send_status(client, "Bypass Detected", user_id, username, first_name)
+                               strike_limit: int = 0, bypass_seconds: float | int | None = None) -> None:
+    extra = []
+    if bypass_seconds is not None:
+        extra.append(("Bypass Timing", f"{round(bypass_seconds)} seconds"))
+    if strike_limit:
+        extra.append(("Strike", f"{strike_count}/{strike_limit}"))
+    await _send_status(client, "Bypass Detected", user_id, username, first_name, extra)
 
 
 # --- d) muted --------------------------------------------------------------------
@@ -120,9 +125,31 @@ async def log_user_banned(client: Client, user_id: int, banned_by: int | None = 
     await _send_status(client, "Ban", user_id, username, first_name)
 
 
-# --- f) linkdl files ---------------------------------------------------------------
+# --- f) premium delivery (Shortener skipped - see triss.handlers.premium) -----------
+
+async def log_premium_delivery(client: Client, user_id: int, username: str | None,
+                                first_name: str | None, plan: str | None = None,
+                                delivered_link: str | None = None) -> None:
+    extra = []
+    if plan:
+        extra.append(("Plan", plan.title()))
+    if delivered_link:
+        extra.append(("Delivery Files", delivered_link))
+    await _send_status(client, "Premium Delivery", user_id, username, first_name, extra)
+
+
+# --- g) every user message (not the owner/admins - see
+# triss.handlers.activity_log) ------------------------------------------------------
+
+async def log_user_message(client: Client, user_id: int, username: str | None,
+                            first_name: str | None, preview: str) -> None:
+    await _send_status(client, "Message", user_id, username, first_name, [("Content", preview)])
+
+
+# --- h) linkdl files ---------------------------------------------------------------
 
 async def log_linkdl_files(client: Client, user_id: int, username: str | None,
                             first_name: str | None, delivered_link: str | None = None) -> None:
     extra = [("Delivery Files", delivered_link)] if delivered_link else []
     await _send_status(client, "Linkdl Files", user_id, username, first_name, extra)
+                     
